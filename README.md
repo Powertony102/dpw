@@ -1,5 +1,11 @@
 # Data Programming Workshop Project
 
+## Introduction
+
+### Model structure
+
+![](/figure/net.png)
+
 ## Project Structure
 
 ```
