@@ -2,6 +2,17 @@
 
 ## Introduction
 
+### Method
+We design our **SIGMA-Net (Squeeze-Integrated GRU Multihead Attention Network)** for Human Activity Recognition task.
+
+The model architecture combines GRU (Gated Recurrent Unit), SE (Squeeze-and-Excitation) Block, and Multi-Head Attention mechanisms:
+
+1. **GRU Layer**: Processes sequential sensor data and captures temporal dependencies
+2. **SE Block**: Adaptively recalibrates channel-wise feature responses
+3. **Multi-Head Attention**: Enables the model to focus on different parts of the input sequence simultaneously
+
+This hybrid design enhances feature extraction and temporal relationship learning for human activity recognition.
+
 ### Model structure
 
 ![](/figure/net.png)
