@@ -4,12 +4,15 @@
 
 ```
 .
-├── src/
-│   ├── controllers/     # Request handlers
-│   ├── models/         # Data models
-│   └── services/       # Business logic
-├── tests/             # Test files
-└── config/            # Configuration files
+├── datasets/
+│   └── UCI_HAR_Dataset/     # UCI HAR Dataset files
+├── models/                  # Saved model checkpoints
+├── train_mhattention.py    # Train
+├── test.py                 # Test
+├── model/                  # Saved model
+│   └── /exp_mh_attention_epoch_200/  # Model implementations
+├── requirements.txt        # Dependencies
+└── README.md              # Documentation
 ```
 
 ## Usage
