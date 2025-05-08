@@ -1,4 +1,3 @@
-# filepath: [train_mhattention.py](http://_vscodecontentref_/3)
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
@@ -9,24 +8,24 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-# 使用torch.cuda而不是torch.cuda as cuda
+# Use torch.backends.cudnn instead of torch.cuda as cuda
 import torch.backends.cudnn as cudnn
 import argparse
 import logging
 import random
-# 如果tensorboardX不可用，可以使用torch.utils.tensorboard
+# Use torch.utils.tensorboard if tensorboardX is unavailable
 try:
     from tensorboardX import SummaryWriter
 except ImportError:
     from torch.utils.tensorboard import SummaryWriter
-# 如果sklearn不可用，可以添加条件导入
+# Add conditional import for sklearn if unavailable
 try:
     from sklearn.metrics import classification_report, confusion_matrix
     import seaborn as sns
 except ImportError:
     print("Warning: sklearn or seaborn not available, some visualizations will be disabled")
 import copy
-# 使用F作为别名来解决警告
+# Use F as an alias to resolve warnings
 from torch.nn import functional as F
 
 parser = argparse.ArgumentParser()
@@ -34,7 +33,7 @@ parser.add_argument('--dataset_name', type=str, default='UCI_HAR', help='dataset
 parser.add_argument('--exp', type=str, default='mh_attention', help='exp_name')
 parser.add_argument('--gpu', type=str, default='0', help='GPU to use')
 parser.add_argument('--epoch', type=int, default='180', help='epoch number')
-parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
+parser.add_argument('--deterministic', type=int, default=1, help='whether to use deterministic training')
 parser.add_argument('--seed', type=int, default=1337, help='random seed')
 args = parser.parse_args()
 
@@ -44,7 +43,7 @@ model_save_path = "./model/exp_{}_epoch_{}/{}".format(args.exp, args.epoch, args
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
 device = torch.device("cuda:" + args.gpu if torch.cuda.is_available() else "cuda:" + str(1 - int(args.gpu)))
-print(f"使用设备：{device}")
+print(f"Using device: {device}")
 
 if args.deterministic:
     cudnn.benchmark = False
@@ -54,7 +53,7 @@ if args.deterministic:
     random.seed(args.seed)
     np.random.seed(args.seed)
 
-# 定义数据集类
+# Define dataset class
 class HumanActivityDataset(Dataset):
     def __init__(self, data, labels):
         self.data = data
@@ -79,7 +78,7 @@ def __load_X(X_signal_paths):
 
     for signal_type_path in X_signal_paths:
         file = open(signal_type_path, 'r')
-        # Read dataset from disk, dealing with text files' syntax
+        # Read dataset from disk, handling text file syntax
         X_signals.append(
             [np.array(serie, dtype=np.float32) for serie in [
                 row.replace('  ', ' ').strip().split(' ') for row in file
@@ -95,18 +94,18 @@ X_test = __load_X(test_paths)
 y_train = np.loadtxt('/home/jovyan/work/dpw/data/UCI_HAR_Dataset/train/y_train.txt',  dtype=np.int32)
 y_test = np.loadtxt('/home/jovyan/work/dpw/data/UCI_HAR_Dataset/test/y_test.txt', dtype=np.int32)
 
-# 确保标签值在 [0, num_classes-1] 范围内
+# Ensure label values are in the range [0, num_classes-1]
 y_train = y_train - 1
 y_test = y_test - 1
 
-# 创建数据集和数据加载器
+# Create datasets and data loaders
 train_dataset = HumanActivityDataset(X_train, y_train)
 test_dataset = HumanActivityDataset(X_test, y_test)
 
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-# 定义具有SE块、多头注意力、知识蒸馏和增强激活函数的GRU模型
+# Define GRU model with SE block, multi-head attention, knowledge distillation, and enhanced activation functions
 class EnhancedAttentionGRUModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, num_classes, num_heads=4, dropout_rate=0.2):
         super(EnhancedAttentionGRUModel, self).__init__()
@@ -115,93 +114,93 @@ class EnhancedAttentionGRUModel(nn.Module):
         self.num_heads = num_heads
         self.head_dim = hidden_size * 2 // num_heads
         
-        # 输入特征层归一化
+        # Input feature layer normalization
         self.input_ln = nn.LayerNorm(input_size)
         
-        # 投影层将输入映射到隐藏维度，用于残差连接
+        # Projection layer maps input to hidden dimensions for residual connection
         self.input_proj = nn.Linear(input_size, hidden_size * 2)
         
-        # GRU 层
+        # GRU layer
         self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True, bidirectional=True)
         
         # SE Block (Squeeze and Excitation)
         self.se_block = SEBlock(hidden_size * 2)
         
-        # 多头注意力层
+        # Multi-head attention layer
         self.multi_head_attention = MultiHeadAttention(hidden_size * 2, num_heads, dropout_rate)
         self.ln_mha = nn.LayerNorm(hidden_size * 2)
         
-        # 输出层
+        # Output layer
         self.ln_out = nn.LayerNorm(hidden_size * 2)
         self.dropout = nn.Dropout(dropout_rate)
         self.fc1 = nn.Linear(hidden_size * 2, hidden_size)
         self.ln_fc1 = nn.LayerNorm(hidden_size)
         self.fc2 = nn.Linear(hidden_size, num_classes)
         
-        # 残差连接的投影层
+        # Projection layer for residual connection
         self.res_proj = nn.Linear(hidden_size * 2, hidden_size)
         
-        # 知识蒸馏预测层 - 为教师模型提供更深层次的特征
+        # Knowledge distillation prediction layer - provides deeper features for teacher model
         self.distill_proj = nn.Linear(hidden_size * 2, hidden_size)
         self.distill_ln = nn.LayerNorm(hidden_size)
         self.distill_fc = nn.Linear(hidden_size, num_classes)
         
     def forward(self, x):
-        # 应用输入层归一化
+        # Apply input layer normalization
         x = self.input_ln(x)
         
-        # 保存原始输入用于残差连接
+        # Save original input for residual connection
         x_proj = self.input_proj(x)
         
-        # 初始化隐藏状态
+        # Initialize hidden state
         h0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(x.device)
         
-        # GRU 前向传播
-        self.gru.flatten_parameters()  # 确保GRU权重在内存中连续存储
+        # GRU forward pass
+        self.gru.flatten_parameters()  # Ensure GRU weights are stored contiguously in memory
         gru_out, _ = self.gru(x, h0)  # gru_out: [batch_size, seq_len, hidden_size*2]
         
-        # 残差连接 - 为序列中的每个时间步添加残差连接
+        # Residual connection - add residual connection for each time step in the sequence
         gru_out = gru_out + x_proj
         
-        # 应用 SE Block 增强通道注意力
+        # Apply SE Block to enhance channel attention
         gru_out = self.se_block(gru_out)
         
-        # 应用多头注意力并获取注意力权重
+        # Apply multi-head attention and get attention weights
         mha_out, attention_weights = self.multi_head_attention(gru_out, gru_out, gru_out)
         
-        # 残差连接和层归一化
-        gru_out = gru_out + mha_out  # 残差连接
-        gru_out = self.ln_mha(gru_out)  # 层归一化
+        # Residual connection and layer normalization
+        gru_out = gru_out + mha_out  # Residual connection
+        gru_out = self.ln_mha(gru_out)  # Layer normalization
         
-        # 使用全局池化获取序列表示（代替之前的注意力加权和）
-        # 这里我们使用平均池化来获取序列的全局表示
+        # Use global pooling to get sequence representation (replacing previous attention-weighted sum)
+        # Here we use average pooling to get global representation of the sequence
         context = torch.mean(gru_out, dim=1)  # [batch_size, hidden_size*2]
         
-        # 应用层归一化和 Dropout
+        # Apply layer normalization and Dropout
         context = self.ln_out(context)
         context = self.dropout(context)
         
-        # 知识蒸馏特征 - 用于教师模型
+        # Knowledge distillation features - for teacher model
         distill_features = self.distill_proj(context)
         distill_features = self.distill_ln(distill_features)
         distill_features = F.leaky_relu(distill_features, negative_slope=0.01)
         distill_logits = self.distill_fc(distill_features)
         
-        # 通过全连接层得到输出，使用leaky_relu代替relu
+        # Pass through fully connected layer, using leaky_relu instead of relu
         out = self.fc1(context)
         
-        # 残差连接 - 从上下文向量到第一个全连接层的输出
+        # Residual connection - from context vector to the output of the first fully connected layer
         res_context = self.res_proj(context)
         out = out + res_context
         
         out = self.ln_fc1(out)
-        out = F.leaky_relu(out, negative_slope=0.01)  # 使用 Leaky ReLU 替代 ReLU
+        out = F.leaky_relu(out, negative_slope=0.01)  # Use Leaky ReLU instead of ReLU
         out = self.dropout(out)
         out = self.fc2(out)
         
-        # 返回: 输出, 多头注意力的平均权重, 原始多头注意力权重, 蒸馏预测
-        # 计算多头注意力权重的平均值用于可视化
-        avg_attention_weights = attention_weights.mean(dim=1)  # 多头平均
+        # Return: output, average attention weights of multi-head attention, original multi-head attention weights, distillation predictions
+        # Compute average of multi-head attention weights for visualization
+        avg_attention_weights = attention_weights.mean(dim=1)  # Multi-head average
         
         return out, avg_attention_weights, attention_weights, distill_logits
 
@@ -221,17 +220,17 @@ class SEBlock(nn.Module):
     def forward(self, x):
         # x shape: [batch, seq_len, channel]
         batch_size, seq_len, channel = x.size()
-        # 转置以便在通道维度上进行池化
+        # Transpose for pooling along channel dimension
         x_perm = x.permute(0, 2, 1)  # [batch, channel, seq_len]
         y = self.avg_pool(x_perm).view(batch_size, channel)  # [batch, channel]
         y = self.fc(y).view(batch_size, channel, 1)  # [batch, channel, 1]
-        # 应用通道注意力权重
+        # Apply channel attention weights
         x_perm = x_perm * y.expand_as(x_perm)
-        # 转置回原始形状
+        # Transpose back to original shape
         return x_perm.permute(0, 2, 1)  # [batch, seq_len, channel]
 
 
-# 多头注意力实现
+# Multi-head attention implementation
 class MultiHeadAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout=0.0):
         super(MultiHeadAttention, self).__init__()
@@ -249,56 +248,56 @@ class MultiHeadAttention(nn.Module):
     def forward(self, query, key, value):
         batch_size = query.size(0)
         
-        # 线性投影并分割成多头
+        # Linear projection and split into multiple heads
         q = self.q_proj(query).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(key).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(value).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
         
-        # 注意力得分
+        # Attention scores
         scores = torch.matmul(q, k.transpose(-1, -2)) / (self.head_dim ** 0.5)
         attention_weights = torch.softmax(scores, dim=-1)
         attention_weights = self.dropout(attention_weights)
         
-        # 应用注意力权重
+        # Apply attention weights
         out = torch.matmul(attention_weights, v)
         
-        # 合并多头
+        # Merge multiple heads
         out = out.transpose(1, 2).contiguous().view(batch_size, -1, self.embed_dim)
         out = self.out_proj(out)
         
         return out, attention_weights
 
-# 知识蒸馏损失函数
+# Knowledge distillation loss function
 def distillation_loss(student_logits, teacher_logits, T=2.0):
     """
-    计算知识蒸馏损失，使用软目标
+    Compute knowledge distillation loss using soft targets
     
-    参数:
-    - student_logits: 学生模型的输出
-    - teacher_logits: 教师模型的输出
-    - T: 温度参数，控制软目标的平滑程度
+    Parameters:
+    - student_logits: Output of the student model
+    - teacher_logits: Output of the teacher model
+    - T: Temperature parameter, controls the smoothness of soft targets
     
-    返回:
-    - 蒸馏损失
+    Returns:
+    - Distillation loss
     """
     soft_student = F.log_softmax(student_logits / T, dim=1)
     soft_teacher = F.softmax(teacher_logits / T, dim=1)
     return nn.KLDivLoss(reduction='batchmean')(soft_student, soft_teacher) * (T * T)
     
 def test():
-    # 测试模型，输出6位浮点数
+    # Test the model, output 6 decimal places
     model.eval()
     all_preds = []
     all_labels = []
     correct = 0
     total = 0
-    all_attention_weights = []  # 用于存储所有的注意力权重
+    all_attention_weights = []  # To store all attention weights
     
     with torch.no_grad():
         with tqdm(test_loader, desc='Testing') as pbar:
             for inputs, labels in pbar:
                 inputs, labels = inputs.to(device), labels.to(device)
-                outputs, attention_weights, _, _ = model(inputs)  # 现在模型返回四个值
+                outputs, attention_weights, _, _ = model(inputs)  # The model now returns four values
                 _, preds = torch.max(outputs, 1)
                 
                 total += labels.size(0)
@@ -306,45 +305,45 @@ def test():
                 
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
-                all_attention_weights.append(attention_weights.cpu().numpy())  # 存储注意力权重
+                all_attention_weights.append(attention_weights.cpu().numpy())  # Store attention weights
                 
-                # 更新进度条
+                # Update progress bar
                 pbar.set_postfix({'acc': f'{100 * correct / total:.2f}%'})
     
     try:
-        # 计算并打印模型性能指标
+        # Compute and print model performance metrics
         accuracy = 100 * correct / total
         report = classification_report(all_labels, all_preds, digits=6)
         conf_mat = confusion_matrix(all_labels, all_preds)
 
-        # 结果保存成图片文件 /result
+        # Save results as image files /result
         df = pd.DataFrame(conf_mat, index=LABELS, columns=LABELS)
         df.to_csv(snapshot_path + '/confusion_matrix.csv')
         
-        # 生成注意力机制热力图
+        # Generate attention mechanism heatmap
         all_attention_weights = np.concatenate(all_attention_weights, axis=0)
         all_attention_weights = all_attention_weights[:len(all_labels)]
         
-        # 重新整形注意力权重，减少时间步的密度
-        # 将注意力权重矩阵按类别分组
+        # Reshape attention weights, reduce time step density
+        # Group attention weight matrix by class
         attention_by_class = {}
         for i, (prediction, label) in enumerate(zip(all_preds, all_labels)):
             if label not in attention_by_class:
                 attention_by_class[label] = []
             attention_by_class[label].append(all_attention_weights[i])
         
-        # 每个类别计算平均注意力
+        # Compute average attention for each class
         avg_attention_by_class = {}
         for label, attn_weights in attention_by_class.items():
             avg_attention_by_class[label] = np.mean(attn_weights, axis=0)
         
-        # 创建一个平均注意力矩阵，每行代表一个类别
+        # Create an average attention matrix, each row represents a class
         num_classes = len(LABELS)
-        # 将时间步长从128采样到32（步长为4）
-        time_length = all_attention_weights.shape[1]  # 获取实际时间步长度
-        sampled_timesteps = list(range(0, time_length, 4))  # 每4步采样一次
+        # Sample time steps from 128 to 32 (step size 4)
+        time_length = all_attention_weights.shape[1]  # Get actual time step length
+        sampled_timesteps = list(range(0, time_length, 4))  # Sample every 4 steps
         
-        # 初始化正确大小的矩阵
+        # Initialize matrix of correct size
         avg_attention_matrix = np.zeros((num_classes, len(sampled_timesteps)))
         
         for i in range(num_classes):
@@ -353,26 +352,26 @@ def test():
                     if timestep < avg_attention_by_class[i].shape[0]:
                         avg_attention_matrix[i, j] = avg_attention_by_class[i][timestep]
         
-        # 绘制热力图
+        # Plot heatmap
         plt.figure(figsize=(14, 8))
         heatmap = sns.heatmap(avg_attention_matrix, cmap='viridis', 
                        xticklabels=[f'{t}' for t in sampled_timesteps],
                        yticklabels=LABELS)
         
-        # 添加标题和标签
+        # Add title and labels
         plt.title('Average Attention Weights by Activity Class (Time Step Sampled)')
         plt.xlabel('Time Steps (sampled every 4 steps)')
         plt.ylabel('Activity')
         
-        # 调整y轴标签的字体大小
+        # Adjust font size of y-axis labels
         plt.yticks(rotation=0, fontsize=10)
         
-        # 保存图像
+        # Save image
         plt.tight_layout()
         plt.savefig(snapshot_path + '/attention_weights_sampled.png')
         
-        # 另外生成一个信号级别的注意力可视化
-        # 为每个活动类找到最有代表性的样本（注意力分布与平均最接近的）
+        # Additionally generate signal-level attention visualization
+        # Find the most representative sample for each activity class (attention distribution closest to average)
         representative_samples = {}
         for label in range(num_classes):
             if label in attention_by_class and len(attention_by_class[label]) > 0:
@@ -386,7 +385,7 @@ def test():
                         min_dist = dist
                         best_sample_idx = i
                 
-                # 创建正确大小的数组
+                # Create array of correct size
                 rep_sample = np.zeros(len(sampled_timesteps))
                 for j, timestep in enumerate(sampled_timesteps):
                     if timestep < attention_by_class[label][best_sample_idx].shape[0]:
@@ -394,7 +393,7 @@ def test():
                 
                 representative_samples[label] = rep_sample
         
-        # 绘制代表性样本的热力图
+        # Plot heatmap of representative samples
         if representative_samples:
             plt.figure(figsize=(14, 8))
             rep_attn_matrix = np.array([representative_samples[i] if i in representative_samples else np.zeros(len(sampled_timesteps)) 
@@ -421,7 +420,7 @@ def test():
     
 if __name__ == "__main__":
 
-    # make logger file
+    # Create logger file
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
     if os.path.exists(snapshot_path + '/code'):
@@ -442,27 +441,27 @@ if __name__ == "__main__":
         print(f"SummaryWriter initialization error: {str(e)}")
         writer = None
 
-    # 初始化模型、损失函数和优化器
+    # Initialize model, loss function, and optimizer
     input_size = X_train.shape[2]
     hidden_size = 128
     num_layers = 2
     num_classes = len(np.unique(y_train))
-    num_heads = 4  # 多头注意力的头数
+    num_heads = 4  # Number of heads for multi-head attention
 
-    # 创建增强版模型
+    # Create enhanced model
     model = EnhancedAttentionGRUModel(input_size, hidden_size, num_layers, num_classes, num_heads)
     model.to(device)
     
-    # 自蒸馏设置 - 复制当前模型作为教师模型
-    teacher_model = None  # 稍后在训练期间更新
-    use_distillation = True  # 是否使用知识蒸馏
-    distill_alpha = 0.5  # 蒸馏损失权重
+    # Self-distillation setup - copy current model as teacher model
+    teacher_model = None  # Update later during training
+    use_distillation = True  # Whether to use knowledge distillation
+    distill_alpha = 0.5  # Weight of distillation loss
     
-    # 损失函数和优化器
+    # Loss function and optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-5)
     
-    # 使用余弦退火学习率调度器
+    # Use cosine annealing learning rate scheduler
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epoch, eta_min=1e-6)
 
     num_epochs = args.epoch
@@ -473,7 +472,7 @@ if __name__ == "__main__":
         model.train()
         running_loss = 0.0
         
-        # 每10个epoch，将当前最佳模型作为教师模型
+        # Update current best model as teacher model every 10 epochs
         if epoch % 10 == 0 and epoch > 0 and use_distillation:
             teacher_model = copy.deepcopy(model)
             teacher_model.eval()
@@ -484,13 +483,13 @@ if __name__ == "__main__":
                 inputs, labels = inputs.to(device), labels.to(device, dtype=torch.long)
                 optimizer.zero_grad()
                 
-                # 前向传播
+                # Forward pass
                 outputs, _, _, distill_outputs = model(inputs)
                 
-                # 计算分类损失
+                # Compute classification loss
                 cls_loss = criterion(outputs, labels)
                 
-                # 计算蒸馏损失
+                # Compute distillation loss
                 distill_loss = 0.0
                 if use_distillation and teacher_model is not None:
                     with torch.no_grad():
@@ -500,16 +499,16 @@ if __name__ == "__main__":
                 else:
                     total_loss = cls_loss
                 
-                # 反向传播
+                # Backward pass
                 total_loss.backward()
                 
-                # 梯度裁剪，避免梯度爆炸
+                # Gradient clipping to avoid exploding gradients
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 
                 optimizer.step()
                 running_loss += total_loss.item()
                 
-                # 更新进度条信息
+                # Update progress bar information
                 pbar.set_postfix({
                     'loss': f'{running_loss / (pbar.n + 1):.4f}', 
                     'cls_loss': f'{cls_loss.item():.4f}',
